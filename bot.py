@@ -1,12 +1,29 @@
-import websocket, json, time
+import websocket
+import json
+import time
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
+import requests  # Import requests library for sending Telegram notifications
 
-# === SETTINGS ===
+# Telegram Bot API Token and Chat ID
+BOT_TOKEN = '7972940282:AAFQy86o6lzC8mPKUMy9SkskJGoqSPaM-4U'
+CHAT_ID = '7972940282'
+
+# Function to send a message to Telegram
+def send_telegram_message(message):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': CHAT_ID,
+        'text': message
+    }
+    response = requests.post(url, data=payload)
+    return response
+
 APP_ID = '80484'
 DERIV_WS_URL = f"wss://ws.derivws.com/websockets/v3?app_id={APP_ID}"
 SYMBOL = 'R_75'
 
+# === SETTINGS ===
 WINDOW_DURATION = 300  # 5 minutes
 MOMENTUM_THRESHOLD = 5.0
 SNR_TOLERANCE = 30.0
@@ -22,10 +39,6 @@ last_signal = None
 
 current_candle = None
 last_candle_minute = None
-
-# === TIME SETTINGS ===
-RUNNING_TIME_LIMIT = timedelta(hours=12)  # Set the running time limit to 12 hours
-start_time = datetime.now()  # Capture the start time when the bot starts
 
 class Candle:
     def __init__(self, timestamp, open_price):
@@ -62,7 +75,8 @@ def check_proximity(price):
     for level in support_levels + resistance_levels:
         if abs(price - level) <= SNR_TOLERANCE and level not in warned_levels:
             zone = "Support" if level in support_levels else "Resistance"
-            print(f"⚠️ WARNING: Price approaching {zone} Zone @ {level}")
+            message = f"⚠️ WARNING: Price approaching {zone} Zone @ {level}"
+            send_telegram_message(message)  # Send Telegram notification
             warned_levels.add(level)
             return zone
     return None
@@ -101,6 +115,7 @@ def check_signal(price):
     if trend == "sideways":
         return
 
+    # Confirm 2 candles in trend direction
     if len(candles) < 2:
         return
     last_two = list(candles)[-2:]
@@ -119,32 +134,9 @@ def check_signal(price):
 
     signal = f"✅ VALID {direction.upper()} SIGNAL | Momentum: {strength:.2f}"
     if signal != last_signal:
-        print(signal)
+        send_telegram_message(signal)  # Send Telegram notification
         last_signal = signal
 
-# === RUN THE BOT FOR 12 HOURS ===
-def run_bot():
-    while True:
-        # Check how much time has passed since the bot started
-        current_time = datetime.now()
-        elapsed_time = current_time - start_time
-
-        # If 12 hours have passed, stop the bot
-        if elapsed_time >= RUNNING_TIME_LIMIT:
-            print("12 hours are up! Stopping the bot.")
-            break  # Exit the loop, stopping the bot
-
-        # WebSocket connection
-        ws = websocket.WebSocketApp(DERIV_WS_URL,
-                                    on_open=on_open,
-                                    on_message=on_message,
-                                    on_error=on_error,
-                                    on_close=on_close)
-        ws.run_forever()
-
-        time.sleep(300)  # Wait for 5 minutes before checking again (optional)
-
-# WebSocket callback functions
 def on_message(ws, message):
     global current_candle, last_candle_minute
 
@@ -190,5 +182,11 @@ def on_open(ws):
     ws.send(json.dumps(sub_msg))
     print(f"📡 Subscribed to {SYMBOL} tick stream...")
 
-# Start the bot
-run_bot()
+ws_app = websocket.WebSocketApp(DERIV_WS_URL,
+                                on_open=on_open,
+                                on_message=on_message,
+                                on_error=on_error,
+                                on_close=on_close)
+
+# Run the bot
+ws_app.run_forever()
