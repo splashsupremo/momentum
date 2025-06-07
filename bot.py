@@ -1,12 +1,12 @@
 import websocket, json, time
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 
+# === SETTINGS ===
 APP_ID = '80484'
 DERIV_WS_URL = f"wss://ws.derivws.com/websockets/v3?app_id={APP_ID}"
 SYMBOL = 'R_75'
 
-# === SETTINGS ===
 WINDOW_DURATION = 300  # 5 minutes
 MOMENTUM_THRESHOLD = 5.0
 SNR_TOLERANCE = 30.0
@@ -23,6 +23,9 @@ last_signal = None
 current_candle = None
 last_candle_minute = None
 
+# === TIME SETTINGS ===
+RUNNING_TIME_LIMIT = timedelta(hours=12)  # Set the running time limit to 12 hours
+start_time = datetime.now()  # Capture the start time when the bot starts
 
 class Candle:
     def __init__(self, timestamp, open_price):
@@ -43,7 +46,6 @@ class Candle:
     def is_bearish(self):
         return self.close < self.open
 
-
 def detect_support_resistance():
     support_levels.clear()
     resistance_levels.clear()
@@ -56,7 +58,6 @@ def detect_support_resistance():
         elif all(curr > x for x in prices[i - 5:i]) and all(curr > x for x in prices[i + 1:i + 6]):
             resistance_levels.append(round(curr, 2))
 
-
 def check_proximity(price):
     for level in support_levels + resistance_levels:
         if abs(price - level) <= SNR_TOLERANCE and level not in warned_levels:
@@ -65,7 +66,6 @@ def check_proximity(price):
             warned_levels.add(level)
             return zone
     return None
-
 
 def detect_trend(candles):
     if len(candles) < 10:
@@ -83,7 +83,6 @@ def detect_trend(candles):
         return "downtrend"
     return "sideways"
 
-
 def detect_momentum():
     if len(price_window) < 2:
         return None, 0
@@ -96,14 +95,12 @@ def detect_momentum():
         return ("upward" if change > 0 else "downward"), change
     return None, change
 
-
 def check_signal(price):
     global last_signal
     trend = detect_trend(candles)
     if trend == "sideways":
         return
 
-    # Confirm 2 candles in trend direction
     if len(candles) < 2:
         return
     last_two = list(candles)[-2:]
@@ -125,7 +122,29 @@ def check_signal(price):
         print(signal)
         last_signal = signal
 
+# === RUN THE BOT FOR 12 HOURS ===
+def run_bot():
+    while True:
+        # Check how much time has passed since the bot started
+        current_time = datetime.now()
+        elapsed_time = current_time - start_time
 
+        # If 12 hours have passed, stop the bot
+        if elapsed_time >= RUNNING_TIME_LIMIT:
+            print("12 hours are up! Stopping the bot.")
+            break  # Exit the loop, stopping the bot
+
+        # WebSocket connection
+        ws = websocket.WebSocketApp(DERIV_WS_URL,
+                                    on_open=on_open,
+                                    on_message=on_message,
+                                    on_error=on_error,
+                                    on_close=on_close)
+        ws.run_forever()
+
+        time.sleep(300)  # Wait for 5 minutes before checking again (optional)
+
+# WebSocket callback functions
 def on_message(ws, message):
     global current_candle, last_candle_minute
 
@@ -157,14 +176,11 @@ def on_message(ws, message):
                 return  # skip signal if near zone
             check_signal(price)
 
-
 def on_error(ws, error):
     print(f"❌ Error: {error}")
 
-
 def on_close(ws, close_status_code, close_msg):
     print("🔌 WebSocket closed.")
-
 
 def on_open(ws):
     sub_msg = {
@@ -174,12 +190,5 @@ def on_open(ws):
     ws.send(json.dumps(sub_msg))
     print(f"📡 Subscribed to {SYMBOL} tick stream...")
 
-
-ws_app = websocket.WebSocketApp(DERIV_WS_URL,
-                                on_open=on_open,
-                                on_message=on_message,
-                                on_error=on_error,
-                                on_close=on_close)
-
-# Run the bot
-ws_app.run_forever()
+# Start the bot
+run_bot()
