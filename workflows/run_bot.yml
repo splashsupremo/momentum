@@ -1,0 +1,26 @@
+name: Run Bot
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # This triggers the workflow every 5 minutes (adjust as needed)
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest  # This sets the environment to Ubuntu for running the bot
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2  # Checkout your repository to get the latest version of the code
+
+      - name: Set up Python
+        uses: actions/setup-python@v2  # Set up Python environment
+        with:
+          python-version: '3.x'  # Use the latest Python version (or specify a version)
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip  # Upgrade pip to the latest version
+          pip install -r requirements.txt    # Install the necessary packages from requirements.txt
+
+      - name: Run Bot
+        run: python bot.py  # This runs the bot script
